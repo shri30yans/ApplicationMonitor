@@ -8,13 +8,20 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - kafka
-      - mongodb
+      kafka:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - MONGODB_URI=mongodb://mongodb:27017/
     networks:
       - monitoring_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
 
   load_generator:
     build:
@@ -22,7 +29,8 @@ services:
       dockerfile: docker/Dockerfile.api
     command: python -m api.load_generator
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - monitoring_network
 
@@ -49,6 +57,11 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
       - monitoring_network
+    healthcheck:
+          test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
 
   prometheus:
     image: prom/prometheus:latest
@@ -76,9 +89,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_INSTALL_PLUGINS=mongodb-grafana-datasource
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
@@ -97,14 +109,29 @@ services:
     networks:
       - monitoring_network
 
+  mongodb_exporter:
+    image: percona/mongodb_exporter:0.40
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+    ports:
+      - "9216:9216"
+    depends_on:
+      mongodb:
+        condition: service_started
+    networks:
+      - monitoring_network
+
+
   log_consumer:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
     command: python -m api.kafka_consumer
     depends_on:
-      - kafka
-      - mongodb
+      kafka:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - MONGODB_URI=mongodb://mongodb:27017/

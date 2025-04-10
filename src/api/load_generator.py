@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 # Configuration
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://api:8000"
 REQUEST_RATE = 10  # requests per second
 ENDPOINTS = [
     ("GET", "/users"),
@@ -41,6 +41,7 @@ async def generate_load(session):
                 print(f"{datetime.now().isoformat()} - {method} {endpoint} - Status: {response.status}")
         
         elif method == "POST":
+            payload=None
             # Prepare payload based on endpoint
             if endpoint == "/users":
                 payload = random.choice(SAMPLE_USERS)
