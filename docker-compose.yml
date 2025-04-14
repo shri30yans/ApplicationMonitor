@@ -22,6 +22,11 @@ services:
       interval: 5s
       timeout: 2s
       retries: 5
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=api"
 
   load_generator:
     build:
@@ -33,6 +38,11 @@ services:
         condition: service_healthy
     networks:
       - monitoring_network
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=load_generator"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -43,6 +53,11 @@ services:
       - "2181:2181"
     networks:
       - monitoring_network
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=zookeeper"
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -58,10 +73,15 @@ services:
     networks:
       - monitoring_network
     healthcheck:
-          test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
-          interval: 10s
-          timeout: 5s
-          retries: 5
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=kafka"
 
   prometheus:
     image: prom/prometheus:latest
@@ -75,14 +95,29 @@ services:
       - '--storage.tsdb.path=/prometheus'
     networks:
       - monitoring_network
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=prometheus"
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:2.4.0
     ports:
       - "3100:3100"
+    user: "0"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./config/loki/local-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/data/loki
     networks:
       - monitoring_network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   grafana:
     image: grafana/grafana:latest
@@ -91,14 +126,22 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-mongodb-datasource,grafana-clock-panel,grafana-simple-json-datasource
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
       - loki
+      - mongodb
     networks:
       - monitoring_network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   mongodb:
     image: mongo:latest
@@ -108,6 +151,11 @@ services:
       - mongodb_data:/data/db
     networks:
       - monitoring_network
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=mongodb"
 
   mongodb_exporter:
     image: percona/mongodb_exporter:0.40
@@ -120,7 +168,11 @@ services:
         condition: service_started
     networks:
       - monitoring_network
-
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=mongodb_exporter"
 
   log_consumer:
     build:
@@ -137,6 +189,53 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/
     networks:
       - monitoring_network
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-external-labels: "job=log_consumer"
+
+  loki_forwarder:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: python -m api.loki_forwarder
+    depends_on:
+      mongodb:
+        condition: service_started
+      loki:
+        condition: service_started
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/
+      - LOKI_URL=http://loki:3100
+    networks:
+      - monitoring_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongodb_api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: python -m api.mongodb_api
+    ports:
+      - "8080:8080"
+    depends_on:
+      mongodb:
+        condition: service_started
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   monitoring_network:
@@ -146,3 +245,4 @@ volumes:
   mongodb_data:
   prometheus_data:
   grafana_data:
+  loki_data:

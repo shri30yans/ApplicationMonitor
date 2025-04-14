@@ -3,57 +3,96 @@
   "tags": ["api", "monitoring", "logs"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 2,
-  "refresh": "10s",
+  "version": 5,
+  "refresh": "5s",
   "panels": [
     {
-      "type": "graph",
+      "type": "timeseries",
       "title": "Request Rate by HTTP Method",
       "targets": [
         {
-          "expr": "sum by (method) (rate(http_requests_total[1m]))",
+          "expr": "sum by (method) (http_requests_total)",
           "legendFormat": "{{method}}",
           "refId": "A",
           "datasource": "Prometheus"
         }
       ],
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineInterpolation": "linear",
+            "spanNulls": false
+          }
+        }
+      }
     },
     {
-      "type": "barGauge",
+      "type": "timeseries",
       "title": "Requests per Endpoint",
       "targets": [
         {
-          "expr": "sum by (endpoint) (rate(http_requests_total[1m]))",
+          "expr": "sum by (endpoint) (http_requests_total)",
+          "legendFormat": "{{endpoint}}",
           "refId": "A",
           "datasource": "Prometheus"
         }
       ],
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "options": {
-        "orientation": "horizontal",
-        "displayMode": "lcd"
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineInterpolation": "linear",
+            "spanNulls": false
+          }
+        }
       }
     },
     {
-      "type": "graph",
+      "type": "timeseries",
       "title": "Error Rate (Non-2xx)",
       "targets": [
         {
-          "expr": "sum by (status) (rate(http_requests_total{status!~\"2..\"}[1m]))",
+          "expr": "sum by (status) (http_requests_total{status!~\"2..\"})",
           "legendFormat": "{{status}}",
           "refId": "A",
           "datasource": "Prometheus"
         }
       ],
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 }
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineInterpolation": "linear",
+            "spanNulls": false
+          }
+        }
+      }
     },
     {
       "type": "gauge",
       "title": "Error Rate Percentage",
       "targets": [
         {
-          "expr": "(sum(rate(http_requests_total{status!~\"2..\"}[1m])) / sum(rate(http_requests_total[1m]))) * 100",
+          "expr": "(sum(http_requests_total{status!~\"2..\"}) / sum(http_requests_total)) * 100",
           "refId": "A",
           "datasource": "Prometheus"
         }
@@ -61,37 +100,46 @@
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "options": {
         "reduceOptions": {
-          "calcs": ["last"],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
         "showThresholdLabels": true,
         "showThresholdMarkers": true
       },
-      "thresholds": {
-        "mode": "absolute",
-        "steps": [
-          { "color": "green", "value": null },
-          { "color": "orange", "value": 3 },
-          { "color": "red", "value": 5 }
-        ]
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 3 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
       }
     },
     {
       "type": "logs",
-      "title": "API Logs (Loki)",
-      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
+      "title": "API Logs",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 15 },
       "targets": [
         {
           "expr": "{job=\"api\"}",
-          "refId": "B",
+          "refId": "A",
           "datasource": "Loki"
         }
       ],
       "options": {
         "showLabels": true,
         "wrapLogMessage": true,
-        "enableLogDetails": true
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
       }
     }
   ],
@@ -108,5 +156,9 @@
   },
   "templating": {
     "list": []
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
   }
 }
