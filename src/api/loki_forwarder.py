@@ -5,6 +5,7 @@ import json
 from pymongo import MongoClient
 import logging
 import os
+import sys
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -125,14 +126,23 @@ class LokiForwarder:
             response = requests.post(
                 self.loki_url,
                 json=payload,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                timeout=10  # Add timeout to prevent hanging
             )
             
             if response.status_code != 204:
                 logger.warning(f"Failed to send logs to Loki: {response.status_code} - {response.text}")
+                if response.status_code >= 500:
+                    logger.info("Loki server error, will retry later")
+                elif response.status_code == 400:
+                    logger.error(f"Bad request to Loki, check payload format: {payload}")
             else:
                 logger.info(f"Successfully sent {len(values)} logs to Loki for path {path}")
                 
+        except requests.exceptions.ConnectionError:
+            logger.warning("Connection error to Loki server, will retry later")
+        except requests.exceptions.Timeout:
+            logger.warning("Timeout connecting to Loki, will retry later")
         except Exception as e:
             logger.error(f"Error sending logs to Loki: {e}")
             
@@ -145,8 +155,12 @@ class LokiForwarder:
 if __name__ == "__main__":
     forwarder = LokiForwarder()
     try:
+        logger.info("Starting Loki Forwarder service")
         forwarder.start_forwarding()
     except KeyboardInterrupt:
         logger.info("Stopping forwarder...")
+    except Exception as e:
+        logger.error(f"Fatal error in Loki Forwarder: {e}")
+        sys.exit(1)
     finally:
         forwarder.close() 

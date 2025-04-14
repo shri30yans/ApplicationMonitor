@@ -139,7 +139,8 @@
         "showCommonLabels": false,
         "showTime": true,
         "sortOrder": "Descending",
-        "dedupStrategy": "none"
+        "dedupStrategy": "none",
+        "showHighlightedGroups": false
       }
     }
   ],
