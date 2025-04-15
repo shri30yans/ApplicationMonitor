@@ -1,15 +1,15 @@
 from kafka import KafkaConsumer
-from pymongo import MongoClient
 import json
 from datetime import datetime
 import logging
+import requests
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class LogConsumer:
-    def __init__(self, bootstrap_servers='kafka:9092', mongo_uri='mongodb://mongodb:27017/'):
+    def __init__(self, bootstrap_servers='kafka:9092', loki_url='http://loki:3100'):
         # Initialize Kafka consumer
         self.consumer = KafkaConsumer(
             bootstrap_servers=bootstrap_servers,
@@ -18,16 +18,8 @@ class LogConsumer:
             auto_offset_reset='earliest',
             group_id='log_processor_group'
         )
-
-        # Initialize MongoDB client
-        self.mongo_client = MongoClient(mongo_uri)
-        self.db = self.mongo_client['api_logs']
         
-        # Create indexes for better query performance
-        self.db.request_logs.create_index([('timestamp', -1)])
-        self.db.request_logs.create_index([('method', 1)])
-        self.db.request_logs.create_index([('path', 1)])
-        self.db.request_logs.create_index([('status_code', 1)])
+        self.loki_url = f"{loki_url}/loki/api/v1/push"
 
     def start_consuming(self):
         """
@@ -48,18 +40,37 @@ class LogConsumer:
 
     def _process_message(self, message):
         """
-        Process a message from Kafka and store it in MongoDB
+        Process a message from Kafka and send it to Loki
         """
         try:
-            # Extract topic name to determine collection
-            topic = message.topic
             value = message.value
             
-            # Store in MongoDB
-            collection = self.db.request_logs
-            result = collection.insert_one(value)
+            # Format for Loki
+            loki_payload = {
+                "streams": [{
+                    "stream": {
+                        "service": "api",
+                        "topic": message.topic
+                    },
+                    "values": [
+                        # Use the timestamp from the message if available, otherwise current time
+                        [
+                            str(int(datetime.fromisoformat(value.get('timestamp', datetime.now().isoformat())).timestamp() * 1e9)),
+                            json.dumps(value, ensure_ascii=False)
+                        ]
+                    ]
+                }]
+            }
             
-            logger.info(f"Stored message in MongoDB with ID: {result.inserted_id}")
+            # Send to Loki
+            response = requests.post(
+                self.loki_url,
+                json=loki_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            
+            logger.info(f"Sent log to Loki: {value}")
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
@@ -69,7 +80,6 @@ class LogConsumer:
         Close connections
         """
         self.consumer.close()
-        self.mongo_client.close()
 
 if __name__ == "__main__":
     consumer = LogConsumer()

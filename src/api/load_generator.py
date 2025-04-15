@@ -15,7 +15,9 @@ ENDPOINTS = [
     ("GET", "/health"),
     ("POST", "/users"),
     ("POST", "/products"),
-    ("POST", "/orders")
+    ("POST", "/orders"),
+    ("GET", "/non-existent")
+    
 ]
 
 # Sample data for POST requests

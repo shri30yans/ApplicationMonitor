@@ -10,11 +10,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      mongodb:
-        condition: service_started
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - MONGODB_URI=mongodb://mongodb:27017/
     networks:
       - monitoring_network
     healthcheck:
@@ -58,10 +55,10 @@ services:
     networks:
       - monitoring_network
     healthcheck:
-          test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
-          interval: 10s
-          timeout: 5s
-          retries: 5
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     image: prom/prometheus:latest
@@ -100,28 +97,6 @@ services:
     networks:
       - monitoring_network
 
-  mongodb:
-    image: mongo:latest
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - monitoring_network
-
-  mongodb_exporter:
-    image: percona/mongodb_exporter:0.40
-    environment:
-      - MONGODB_URI=mongodb://mongodb:27017
-    ports:
-      - "9216:9216"
-    depends_on:
-      mongodb:
-        condition: service_started
-    networks:
-      - monitoring_network
-
-
   log_consumer:
     build:
       context: .
@@ -130,19 +105,19 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      mongodb:
+      loki:
         condition: service_started
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - MONGODB_URI=mongodb://mongodb:27017/
+      - LOKI_URL=http://loki:3100
     networks:
       - monitoring_network
+    restart: unless-stopped
 
 networks:
   monitoring_network:
     driver: bridge
 
 volumes:
-  mongodb_data:
   prometheus_data:
   grafana_data:
