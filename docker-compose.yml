@@ -20,11 +20,12 @@ services:
       interval: 5s
       timeout: 2s
       retries: 5
+      start_period: 10s
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=api"
+        max-size: "10m"
+        max-file: "3"
 
   load_generator:
     build:
@@ -37,10 +38,10 @@ services:
     networks:
       - monitoring_network
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=load_generator"
+        max-size: "10m"
+        max-file: "3"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -52,15 +53,22 @@ services:
     networks:
       - monitoring_network
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=zookeeper"
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "echo mntr | nc localhost 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   kafka:
     image: confluentinc/cp-kafka:latest
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
     environment:
@@ -68,18 +76,22 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     networks:
       - monitoring_network
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
-      interval: 10s
-      timeout: 5s
+      interval: 30s
+      timeout: 10s
       retries: 5
+      start_period: 30s
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=kafka"
+        max-size: "10m"
+        max-file: "3"
 
   prometheus:
     image: prom/prometheus:latest
@@ -94,10 +106,10 @@ services:
     networks:
       - monitoring_network
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=prometheus"
+        max-size: "10m"
+        max-file: "3"
 
   loki:
     image: grafana/loki:2.4.0
@@ -154,10 +166,10 @@ services:
     networks:
       - monitoring_network
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=mongodb"
+        max-size: "10m"
+        max-file: "3"
 
   mongodb_exporter:
     image: percona/mongodb_exporter:0.40
@@ -171,10 +183,10 @@ services:
     networks:
       - monitoring_network
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=mongodb_exporter"
+        max-size: "10m"
+        max-file: "3"
 
   log_consumer:
     build:
@@ -186,34 +198,31 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_started
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - MONGODB_URI=mongodb://mongodb:27017/
     networks:
       - monitoring_network
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-external-labels: "job=log_consumer"
+        max-size: "10m"
+        max-file: "3"
 
-  loki_forwarder:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
-    environment:
-      - MONGODB_URI=mongodb://mongodb:27017/
-      - LOKI_URL=http://loki:3100
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./config/promtail:/etc/promtail
+    command: -config.file=/etc/promtail/config.yaml
     depends_on:
+      kafka:
+        condition: service_healthy
       loki:
         condition: service_healthy
-      mongodb:
-        condition: service_started
-      api:
-        condition: service_healthy
-    command: python -m api.loki_forwarder
     networks:
       - monitoring_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   monitoring_network:
