@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: kafka
+    kafka:
+      brokers: ["kafka:9092"]
+      topics: ["api-logs-request"]
+      group_id: "promtail_kafka_consumer"
+      labels:
+        job: "api"
+        level: "info"
+        __path__: "/nonexistent"
+    relabel_configs:
+      - source_labels: ['__kafka_topic']
+        target_label: 'topic'
+      - source_labels: ['__kafka_partition']
+        target_label: 'partition'
+      - source_labels: ['__kafka_offset']
+        target_label: 'offset'
+    pipeline_stages:
+      - json:
+          expressions:
+            method: method
+            path: path
+            status_code: status_code
+            duration: duration
+            log_type: log_type
+            timestamp: timestamp
+      - labels:
+          method:
+          path:
+          status_code:
+          log_type:
+      - timestamp:
+          source: timestamp
+          format: RFC3339
